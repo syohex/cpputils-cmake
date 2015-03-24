@@ -9,6 +9,7 @@ cpputils-cmake does all the dirty setup *automatically* for following plugins an
 - [[https://github.com/company-mode/company-mode][company-mode]]
 - [[https://github.com/randomphrase/company-c-headers][company-c-headers]]
 - [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Semantic.html][semantic]]
+- [[https://github.com/mooz/c-eldoc][c-eldoc]]
 - [[http://www.emacswiki.org/emacs/CompileCommand]["M-x compile"]]
 - "M-x ff-find-other-file" (if you press `C-x C-o` in C/C++ file, ff-find-other-file will open *correct* header file under cursor)
 

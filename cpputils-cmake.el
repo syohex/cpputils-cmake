@@ -728,6 +728,10 @@ by customize `cppcm-compile-list'."
                                                                    cppcm-extra-preprocss-flags-from-user)))
     (if cppcm-debug (message "company-clang-arguments=%s" company-clang-arguments))
 
+    ;; c-eldoc
+    (setq c-eldoc-includes company-clang-arguments)
+    (if cppcm-debug (message "c-eldoc-includes=%s" c-eldoc-includes))
+
     (when (fboundp 'semantic-add-system-include)
       (semantic-reset-system-include)
       (mapcar 'semantic-add-system-include
@@ -737,7 +741,7 @@ by customize `cppcm-compile-list'."
                                   (replace-regexp-in-string "^-I *" "" str)))
                             ac-clang-flags))))
 
-    ;; unlike auto-complete and company-mode, flycheck prefer make things complicated
+    ;; flycheck prefer complex setup
     (setq flycheck-clang-include-path (delq nil
                                             (mapcar (lambda (str)
                                                       (cppcm--extract-include-directory str))
