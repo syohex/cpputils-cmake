@@ -187,8 +187,7 @@ For example:
         (if (string-match cppcm-cmake-target-regex l)
           (push l vars)
           )))
-    vars
-    ))
+    vars))
 
 (defun cppcm-query-match-line (f re)
   "return match line"
@@ -200,8 +199,7 @@ For example:
           (setq ml l)
           (throw 'brk t)
           )))
-    ml
-    ))
+    ml))
 
 ;; grep Project_SOURCE_DIR if it exists
 ;; if Project_SOURCE_DIR does not exist, grep first what_ever_SOURCE_DIR
@@ -303,23 +301,15 @@ return (found possible-build-dir build-dir src-dir)"
          (t
           (setq rlt (concat rlt item))
           ))
-        )
-      )
-     (t (setq rlt value))
-     )
+        ))
+     (t (setq rlt value)))
     rlt))
 
 (defun cppcm-strip-prefix (prefix str)
   "strip prefix from str"
   (if (string-equal (substring str 0 (length prefix)) prefix)
       (substring str (length prefix))
-    str)
-  )
-
-(defun cppcm--extract-include-directory (str)
-  (when (string-match "^-I[ \t]*" str)
-    (setq str (replace-regexp-in-string "^-I[ \t]*" "" str))
-    (setq str (cppcm-trim-string str "\""))))
+    str))
 
 (defun cppcm-trim-string (string trim-str)
   "Remove white spaces in beginning and ending of STRING.
@@ -351,9 +341,7 @@ White space here is any of: space, tab, emacs newline (line feed, ASCII 10)."
        ((and (> (length tk) 9) (string= (substring tk 0 9) "-isystem "))
         (setq v (concat v " -I\"" (substring tk 9 (length tk)) "\"")))
        ))
-
-    v
-  ))
+    v))
 
 (defun cppcm--find-physical-lib-file (base-exe-name)
   "a library binary file could have different file extension"
@@ -625,14 +613,48 @@ Require the project be compiled successfully at least once."
           (when (and crt-dir (not (member crt-dir cppcm-include-dirs)))
             (push (concat "-I\"" crt-dir "\"") cppcm-include-dirs))))
 
-      (setq cppcm-preprocess-defines (if c-defines (split-string c-defines "\s+" t))))
+      (setq cppcm-preprocess-defines (if c-defines (split-string c-defines "[ \t]+" t))))
     ))
 
 (defun cppcm--fix-include-path (l)
+"Remove double quote wrapper around include path.
+Double quotes are only used for flymake Makefile.
+Other plugins does NOT support quote wrapped path!"
   (delq nil
         (mapcar (lambda (str)
                   (replace-regexp-in-string "\"" "" str))
                 l)))
+
+
+(defun cppcm--extract-items-with-prefix-removed (flag full-list)
+  (let ((re (concat "^" flag " *")))
+    (delq nil (mapcar (lambda (str)
+                        (if (string-match re str)
+                            (replace-regexp-in-string re "" str)))
+                      full-list))
+    ))
+
+(defun cppcm--finalize-include-dirs ()
+  (let (rlt l usr-inc-dirs)
+    (setq rlt (cppcm--extract-items-with-prefix-removed "-I" cppcm-include-dirs))
+    (when cppcm-extra-preprocss-flags-from-user
+      (setq l (split-string cppcm-extra-preprocss-flags-from-user " "))
+      (setq usr-inc-dirs (cppcm--extract-items-with-prefix-removed "-I" usr-inc-dirs))
+      (if usr-inc-dirs (setq rlt (append rlt usr-inc-dirs))))
+    rlt))
+
+(defun cppcm--finalize-all-arguments-into-list ()
+  "Return: (-I/usr/include -I./include -DNDEUBG)"
+  (cppcm--fix-include-path
+   (append cppcm-include-dirs
+           cppcm-preprocess-defines
+           cppcm-extra-preprocss-flags-from-user)))
+
+(defun cppcm--finalize-all-preprocess-flags-into-list ()
+  (cppcm--extract-items-with-prefix-removed "-D" (cppcm--finalize-all-arguments-into-list)))
+
+(defun cppcm--finalize-all-arguments-into-string ()
+  (mapconcat 'identity (cppcm--finalize-all-arguments-into-list) " "))
 
 (defun cppcm-compile-in-current-exe-dir ()
   "compile the executable/library in current directory."
@@ -680,7 +702,7 @@ by customize `cppcm-compile-list'."
   "reload and reproduce everything"
   (if cppcm-debug (message "cppcm-reload-all called"))
   (interactive)
-  (let (dirs )
+  (let (dirs)
     (when buffer-file-name
 
       (setq cppcm-hash nil)
@@ -699,7 +721,6 @@ by customize `cppcm-compile-list'."
             (progn
               ;; the order is fixed
               (cppcm-scan-info-from-cmake (nth 3 dirs) (nth 3 dirs) (nth 2 dirs))
-
               (cppcm-set-c-flags-current-buffer))
           (error
            (message "Failed to create Makefile for flymake. Continue anyway.")))
@@ -707,64 +728,45 @@ by customize `cppcm-compile-list'."
        ((nth 1 dirs)
         ;; build-dir is found, but flags in build-dir need be created
         ;; warn user.
-        (message "Please run cmake in %s at first" (nth 1 dirs))
-        )
-       (t
-        (message "Build directory is missing! Create it and run cmake in it.")))
-      )
-    )
+        (message "Please run cmake in %s at first" (nth 1 dirs)))
+       (t (message "Build directory is missing! Create it and run cmake in it.")))
+      ))
 
   (if cppcm-debug (message "cppcm-include-dirs=%s" cppcm-include-dirs))
 
   (when cppcm-include-dirs
     ;; for auto-complete-clang
-    (setq ac-clang-flags (cppcm--fix-include-path
-                          (append cppcm-include-dirs cppcm-preprocess-defines cppcm-extra-preprocss-flags-from-user)
-                          ))
+    (setq ac-clang-flags (cppcm--finalize-all-arguments-into-list))
     (if cppcm-debug (message "ac-clang-flags=%s" ac-clang-flags))
 
-    (setq company-clang-arguments (cppcm--fix-include-path (append cppcm-include-dirs
-                                                                   cppcm-preprocess-defines
-                                                                   cppcm-extra-preprocss-flags-from-user)))
+    ;; company-clang.el from company-mode
+    (setq company-clang-arguments (cppcm--finalize-all-arguments-into-list))
     (if cppcm-debug (message "company-clang-arguments=%s" company-clang-arguments))
 
     ;; c-eldoc
-    (setq c-eldoc-includes company-clang-arguments)
+    (setq c-eldoc-includes (cppcm--finalize-all-arguments-into-string))
     (if cppcm-debug (message "c-eldoc-includes=%s" c-eldoc-includes))
 
+    ;; semnatic
     (when (fboundp 'semantic-add-system-include)
       (semantic-reset-system-include)
-      (mapcar 'semantic-add-system-include
-              (delq nil
-                    (mapcar (lambda (str)
-                              (if (string-match "^-I *" str)
-                                  (replace-regexp-in-string "^-I *" "" str)))
-                            ac-clang-flags))))
+      (mapcar 'semantic-add-system-include (cppcm--finalize-include-dirs)))
 
-    ;; flycheck prefer complex setup
-    (setq flycheck-clang-include-path (delq nil
-                                            (mapcar (lambda (str)
-                                                      (cppcm--extract-include-directory str))
-                                                    ac-clang-flags)))
+    ;; flycheck
+    (setq flycheck-clang-include-path (cppcm--finalize-include-dirs))
     (if cppcm-debug (message "flycheck-clang-include-path=%s" flycheck-clang-include-path))
-
-    (setq flycheck-clang-definitions (delq nil
-                                           (mapcar (lambda (str)
-                                                     (if (string-match "^-D *" str) (replace-regexp-in-string "^-D *" "" str)))
-                                                   ac-clang-flags)))
+    (setq flycheck-clang-definitions (cppcm--finalize-all-preprocess-flags-into-list))
     (if cppcm-debug (message "flycheck-clang-definitions=%s" flycheck-clang-definitions))
 
     ;; company-c-headers-path-system
-    (setq company-c-headers-path-system flycheck-clang-include-path)
+    (setq company-c-headers-path-system (cppcm--finalize-include-dirs))
     (if cppcm-debug (message "company-c-headers-path-system=%s" company-c-headers-path-system))
 
     ;; set cc-search-directories automatically, so ff-find-other-file will succeed
     (add-hook 'ff-pre-find-hook
               '(lambda ()
                  (let (inc-dirs)
-                   (setq inc-dirs (mapcar (lambda (item)
-                                            (cppcm--extract-include-directory item))
-                                          cppcm-include-dirs))
+                   (setq inc-dirs (cppcm--finalize-include-dirs))
                    ;; append the directories into the cc-search-directories
                    ;; please note add-to-list won't insert duplicated items
                    (dolist (x inc-dirs) (add-to-list 'cc-search-directories x))
